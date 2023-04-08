@@ -1,75 +1,104 @@
-import livros from "../models/Livro.js";
+import {autores, livros} from "../models/index.js";
 //A controlador define a implementação do metodo 
 //crianado uma class para armazenar os metodos 
 class LivroController{
 
-    static listarLivros = (req, res) =>{
-        livros.find()
-            .populate('autor')
-            .exec((err, livros) => {
-            res.status(200).json(livros)
-        })
+  static listarLivros = async (req, res, next) =>{
+    try{
+      const buscaLivros = livros.find();
+      req.resultado = buscaLivros;
+
+      next();
+    }catch(error){
+      next(error);
     }
+  };
 
-    static listarLivroID = (req, res) => {
-        const id = req.params.id
-
-        livros.findById(id)
-            .populate('autor', 'nome')
-            .exec((err, livros) => {
-                if(err){
-                    res.status(400).send({message: `${err.message} - id do livro não localizado. `})
-                }else{
-                    res.status(200).send(livros);
-                }
-        })
+  static listarLivroID = async (req, res, next) => {
+    const id = req.params.id;
+    try{
+      await livros.findById(id)
+        .populate("autor", "nome")
+        .exec((livros) => {
+          res.status(200).send(livros);
+        });
+    }catch(error){
+      next(error);
     }
+  };
 
-    static cadastrarLivro = (req, res) => {
-        let livro = new livros(req.body)
-
-        livro.save((err) => {
-            if(err){
-                res.status(500).send({mesage: `${err.message} - falha ao cadastrar livro.`})
-            }else {
-                res.status(201).send(livro.toJSON())
-            }
-        })
+  static cadastrarLivro = async (req, res, next) => {
+    let livro = new livros(req.body);
+    try{
+      await livro.save();
+      res.status(200).send({mensage: "Livro cadastrado com sucesso"});
+    }catch(error){  
+      next(error);
     }
+  };
 
-    static atualizarLivro = (req, res) => {
-        const id = req.params.id
-
-        livros.findByIdAndUpdate(id, {$set: req.body}, (err) => {
-            if(!err){
-                res.status(200).send({message: 'Livro atualizado com suceso'})
-            }else{
-                res.status(500).send({message: err.message})
-            }
-        })
+  static atualizarLivro = async (req, res, next) => {
+    const id = req.params.id;
+    try{
+      await livros.findByIdAndUpdate(id, {$set: req.body});
+      res.status(200).send({mensage: "Livro atualizado com sucesso"});
+    }catch(error){
+      next(error);
     }
+  };
 
-    static excluirLivro = (req, res) => {
-        const id = req.params.id
-
-        livros.findByIdAndDelete(id, (err) => {
-            if(!err){
-                res.status(200).send({message: 'livros removido com sucesso'})
-            }else{
-                res.status(500).send({message: err.message})
-            }
-        })
+  static excluirLivro = async (req, res, next) => {
+    const id = req.params.id;
+    try{
+      await livros.findByIdAndDelete(id);
+      res.status(200).send({mensage: "livro deletado com sucesso"});
+    }catch(error){
+      next(error);
     }
+  };
 
-    static listarLivrosPorEditora = (req, res) => {
-        //busca especifica por editora recebendo um query params 
-        //rota para acionar : http://localhost:3000/livros/busca?editora=Hogwarts inn
-        const editora = req.query.editora
+  static listarLivrosPorFiltro = async (req, res, next) => {
+    //busca especifica por editora recebendo um query params 
+    //rota para acionar : http://localhost:3000/livros/busca?editra=Hogwarts inn
+    //regex = expressão regulares    
+    const busca = await processaBusca(req.query);
 
-        livros.find({'editora': editora}, {}, (err, livros) => {
-            res.status(200).send(livros)
-        })
+    if(busca !== null){
+      try{
+        const livroResultado = livros.find(busca).populate("autor");
+        req.resultado = livroResultado;
+        next();
+      }catch(error){
+        next(error);
+      }
+    }else{
+      res.status(200).send([]);
     }
+  };
 }
 
-export default LivroController
+async function processaBusca(parametros){
+  const {editora,  titulo, minPaginas, maxPaginas, nomeAutor} = parametros;
+
+  const regex = new RegExp(titulo, "i"); //criando uma regex nova
+  let busca = {};
+
+  if(editora) busca.editora = editora;
+  if(titulo) busca.titulo = {$regex: titulo, $options: "i"};
+  if(minPaginas) busca.numeroPaginas = {$gte: minPaginas};
+  if(maxPaginas) busca.numeroPaginas = {$lte: maxPaginas};
+  if(nomeAutor) {
+    const autor = await autores.findOne({nome: nomeAutor});
+
+    if(autor !== null){
+      busca.autor = autor._id;
+    }else{
+      busca = null;
+    }
+    
+  }
+  //  /mongoose/i o I ignora o maiusculo e minusculo
+  return busca;
+}
+
+export default LivroController;
